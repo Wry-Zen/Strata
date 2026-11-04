@@ -78,10 +78,13 @@
     overflow-y: auto;
 }
 
-/* 词条高亮右侧收紧 12px：收起与弹跳全程高亮右缘均为负值，不渗入主界面
-   （推导见上方 reveal 注释） */
+/* 词条：单行截断（与手机端同款），右侧收紧 12px——
+   收起与弹跳全程高亮右缘均为负值，不渗入主界面（推导见上方 reveal 注释） */
 .sidebar-content .sidebar-item {
     margin-right: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .sidebar h3 {
