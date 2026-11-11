@@ -26,7 +26,7 @@
 ## 快速上手
 
 ```bash
-git clone https://github.com/East-Luo/Strata.git
+git clone https://github.com/Wry-Zen/Strata.git
 cd Strata && cp config.example.json config.json   # 编辑 config.json，填入你的文章仓库
 python -m http.server 8000                      # 本地预览；或把整个目录交给任意静态服务器托管
 ```
