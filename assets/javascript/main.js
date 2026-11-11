@@ -19,12 +19,10 @@ function revealUI() {
     startRouter();
 }
 
-// 时间戳参数破缓存：nginx 静态文件的协商缓存可能让手机浏览器在新鲜期内
-// 不发请求，改动部署后看不到更新；每次注入新 URL 强制取最新
 function injectStyle(href) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = `${href}?t=${Date.now()}`;
+    link.href = href;
     document.head.appendChild(link);
 }
 
@@ -59,8 +57,7 @@ async function boot() {
     // 平台资源：动态拉取对应平台的 js + 注入对应平台的 css
     const platformName = detectPlatform();
     try {
-        // 时间戳参数破缓存：平台模块链与 CSS 同策略，避免改动部署后浏览器沿用旧模块
-        platform = await withTimeout(import(`./platforms/${platformName}/index.js?t=${Date.now()}`), TIMEOUT);
+        platform = await withTimeout(import(`./platforms/${platformName}/index.js`), TIMEOUT);
         injectStyle(`assets/css/${platformName}.css`);
     } catch (e) {
         intro.fail('加载平台资源失败');
