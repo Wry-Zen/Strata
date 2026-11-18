@@ -1,9 +1,15 @@
 // background.js —— 背景层：加载动画与四面体背景共用同一个 canvas。
 //
-// 三段绘制（点、发散、封边）与两段加载（发散期、封边期）交错：
-//   点 → 发散(随机检查点) → [硬等 marked] → 发散到底(随机)
-//      → 封边(随机检查点) → [硬等数据] → 封边完成(随机) → 升维 → 旋转
-// 每段加载都是"随机检查点 + 硬检查点"，失败路径保持红色静态。
+// 三段绘制（点、发散、封边）与三个检查点交错：
+//   点 → 发散(随机检查点) → [硬等骨架：marked+平台+样式] → 发散到底(随机)
+//      → 封边(随机检查点) → [硬等清单+恢复：meta 与 hash 引用篇] → 封边完成(随机)
+//      → 升维 → 旋转
+//
+// 节拍原则——等待才表演：检查点已就绪的段快进（150–250ms），仍在等待的段
+// 保持完整节奏（650–850ms）。快网用户看到的是同一支编舞的高速版；慢网用户
+// 在 hold 段得到呼吸脉动与 n/N 进度，静止与卡死可分辨。
+// 揭示（onReady）在封边合拢（link2）开始时触发，升维与界面淡入同帧完成。
+// 失败路径保持红色静态；重试从失败姿态续位，已就绪的检查点直接冲刺。
 //
 // 几何衔接：正三角形 + 三条到中心的线，恰好是正四面体在正面视角下的投影。
 
@@ -40,9 +46,14 @@ const SCALE = (R * (DISTANCE + 1 / 3)) / (R3 * DISTANCE);
 // ---------- 状态 ----------
 let state = 'idle'; // idle | point | grow1 | hold1 | grow2 | link1 | hold2 | link2 | dimension | rotate | fail
 let stateStart = 0;
+let stateDur = 0;   // 当前段时长，进入段时按检查点就绪与否决定
 let rafId = null;
-let markedReadyFlag = false;
-let dataReadyFlag = false;
+
+let shellFlag = false;     // 骨架：marked + 平台模块 + 平台样式
+let manifestFlag = false;  // 清单：meta 全集就绪
+let restoreFlag = false;   // 恢复：URL hash 引用的文章就绪
+let progress = { done: 0, total: 0 }; // 恢复篇进度（hold2 计数显示）
+let revealed = false;      // onReady 只触发一次
 
 let spokeT = 0; // 辐条（发散）进度 0..1
 let linkT = 0;  // 三角形边（封边）进度 0..1
@@ -51,14 +62,8 @@ let failSpoke0 = 0;
 let failLink0 = 0;
 
 // 各检查点的随机参数（begin 时重新随机）
-let pointDur = 750;
 let growTarget = 0.45;
-let grow1Dur = 750;
-let grow2Dur = 750;
 let linkTarget = 0.45;
-let link1Dur = 750;
-let link2Dur = 750;
-let dimDur = 750;
 
 let onReady = null;
 let onRetry = null;
@@ -73,9 +78,25 @@ const noiseOffset = [Math.random() * 70, Math.random() * 70, Math.random() * 70]
 
 const now = () => performance.now();
 const rand = (min, max) => min + Math.random() * (max - min);
-const stageDur = () => rand(650, 850); // ~750ms 一阶段
+// 节拍二值：等待中的段完整表演，已就绪的段快进
+const slowDur = () => rand(650, 850);
+const fastDur = () => rand(150, 250);
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 const noise = (x) => Math.sin(x) * 0.2 + 0.2;
+
+function enter(stateName, dur) {
+    state = stateName;
+    stateStart = now();
+    stateDur = dur;
+}
+
+// 冲刺：检查点在段中途打开时，剩余部分压缩为快进——快网不因慢节拍空等
+function accelerate() {
+    if (state === 'grow1' || state === 'link1') {
+        const elapsed = now() - stateStart;
+        stateDur = Math.min(stateDur, elapsed + fastDur());
+    }
+}
 
 // 位图尺寸与 CSS 尺寸必须同源同步：CSS 端 inset:0 跟随布局视口，innerWidth/Height
 // 在移动端随地址栏收展变化且 iOS 的 resize 事件不可靠（需 visualViewport 兜底），
@@ -97,7 +118,13 @@ function lineColor(alpha) {
     return `rgba(255, ${g}, ${b}, ${alpha})`;
 }
 
-// 当前等待内容的文本：三个宏观阶段——初始化、加载 marked、获取文章数据
+// hold 段呼吸：等待期 ±10% 亮度脉动（~1.2s 周期），有活性但不冒充进度
+function breathe() {
+    if (state !== 'hold1' && state !== 'hold2') return 1;
+    return 1 + 0.1 * Math.sin(((now() - stateStart) / 1200) * Math.PI * 2);
+}
+
+// 当前等待内容的文本；恢复篇多于一篇时给出 n/N 计数
 function statusText() {
     switch (state) {
         case 'point':
@@ -105,11 +132,11 @@ function statusText() {
         case 'grow1':
         case 'hold1':
         case 'grow2':
-            return '加载CDN';
+            return '加载资源';
         case 'link1':
-        case 'hold2':
-        case 'link2':
             return '获取文章数据';
+        case 'hold2':
+            return progress.total > 1 ? `文章 ${progress.done}/${progress.total}` : '获取文章数据';
         default:
             return '';
     }
@@ -133,15 +160,15 @@ function draw2D() {
     // 中心白点：point 阶段淡入，发散生长时缩小消失
     const dotR = 4 * Math.max(0, 1 - spokeT * 5);
     if (dotR > 0.01) {
-        const alpha = state === 'point' ? Math.min(1, (now() - stateStart) / pointDur) : 1;
-        ctx.fillStyle = lineColor(0.9 * alpha);
+        const alpha = state === 'point' ? Math.min(1, (now() - stateStart) / stateDur / 1000) : 1;
+        ctx.fillStyle = lineColor(0.9 * alpha * breathe());
         ctx.beginPath();
         ctx.arc(c.x, c.y, dotR, 0, Math.PI * 2);
         ctx.fill();
     }
 
     // 辐条（中心 → 顶点）与三角形边（顶点 → 相邻顶点）同色，一次成路径
-    ctx.strokeStyle = lineColor(0.9);
+    ctx.strokeStyle = lineColor(0.9 * breathe());
     ctx.beginPath();
     for (let i = 0; i < 3; i++) {
         const p = pts[i];
@@ -222,75 +249,72 @@ function tick() {
 
     switch (state) {
         case 'point':
-            if (t >= pointDur / 1000) {
-                state = 'grow1';
-                stateStart = now();
+            if (t >= stateDur / 1000) {
+                enter('grow1', shellFlag ? fastDur() : slowDur());
             }
             break;
 
         case 'grow1': {
-            const p = Math.min(1, t / (grow1Dur / 1000));
+            const p = Math.min(1, t / (stateDur / 1000));
             spokeT = growTarget * easeOut(p);
             if (p >= 1) {
                 spokeT = growTarget;
-                state = 'hold1';
-                stateStart = now();
+                enter('hold1', 0);
             }
             break;
         }
 
         case 'hold1':
-            if (markedReadyFlag) {
-                state = 'grow2';
-                stateStart = now();
+            if (shellFlag) {
+                enter('grow2', fastDur());
             }
             break;
 
         case 'grow2': {
-            const p = Math.min(1, t / (grow2Dur / 1000));
+            const p = Math.min(1, t / (stateDur / 1000));
             spokeT = growTarget + (1 - growTarget) * easeOut(p);
             if (p >= 1) {
                 spokeT = 1;
-                state = 'link1';
-                stateStart = now();
+                // 封边节拍看清单与恢复：两者已就绪则快进（快网路径全程 ~1.5s）
+                enter('link1', manifestFlag && restoreFlag ? fastDur() : slowDur());
             }
             break;
         }
 
         case 'link1': {
-            const p = Math.min(1, t / (link1Dur / 1000));
+            const p = Math.min(1, t / (stateDur / 1000));
             linkT = linkTarget * easeOut(p);
             if (p >= 1) {
                 linkT = linkTarget;
-                state = 'hold2';
-                stateStart = now();
+                enter('hold2', 0);
             }
             break;
         }
 
         case 'hold2':
-            if (dataReadyFlag) {
-                state = 'link2';
-                stateStart = now();
+            if (manifestFlag && restoreFlag) {
+                enter('link2', fastDur());
             }
             break;
 
         case 'link2': {
-            const p = Math.min(1, t / (link2Dur / 1000));
+            // 揭示与收尾重叠：封边合拢即触发界面入场，升维在其后同帧进行
+            if (!revealed) {
+                revealed = true;
+                if (onReady) onReady();
+            }
+            const p = Math.min(1, t / (stateDur / 1000));
             linkT = linkTarget + (1 - linkTarget) * easeOut(p);
             if (p >= 1) {
                 linkT = 1;
-                state = 'dimension';
-                stateStart = now();
+                enter('dimension', rand(400, 650));
             }
             break;
         }
 
         case 'dimension':
-            if (t >= dimDur / 1000) {
-                state = 'rotate';
-                stateStart = now();
-                if (onReady) onReady();
+            if (t >= stateDur / 1000) {
+                enter('rotate', 0);
             }
             break;
 
@@ -342,8 +366,11 @@ function reset() {
     lastStatus = '';
     statusEl.textContent = '';
     statusEl.classList.remove('show');
-    markedReadyFlag = false;
-    dataReadyFlag = false;
+    shellFlag = false;
+    manifestFlag = false;
+    restoreFlag = false;
+    progress = { done: 0, total: 0 };
+    revealed = false;
     selfRotation = 0;
     axisAngleX = 0;
     axisAngleY = 0;
@@ -359,23 +386,25 @@ export function createIntro({ onReady: ready, onRetry: retry } = {}) {
 
     return {
         begin() {
-            state = 'point';
-            stateStart = now();
-            pointDur = stageDur();
+            enter('point', rand(200, 300));
             growTarget = rand(0.3, 0.6);
-            grow1Dur = stageDur();
-            grow2Dur = stageDur();
             linkTarget = rand(0.3, 0.6);
-            link1Dur = stageDur();
-            link2Dur = stageDur();
-            dimDur = stageDur();
             rafId = requestAnimationFrame(tick);
         },
-        markedReady() {
-            markedReadyFlag = true;
+        shellReady() {
+            shellFlag = true;
+            accelerate();
         },
-        dataReady() {
-            dataReadyFlag = true;
+        manifestReady() {
+            manifestFlag = true;
+            accelerate();
+        },
+        restoreReady() {
+            restoreFlag = true;
+            accelerate();
+        },
+        articleProgress(done, total) {
+            progress = { done, total };
         },
         fail(msg) {
             failSpoke0 = spokeT;

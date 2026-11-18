@@ -5,6 +5,7 @@
 
 import * as data from './data.js';
 import * as wm from './window-manager.js';
+import { parseHash } from './data.js';
 
 let applying = false; // 应用外部 URL 期间抑制写回，避免历史条目堆积
 let lastIds = [];
@@ -12,10 +13,6 @@ let pending = [];     // 初始 URL 序列，等 startRouter 应用
 
 function articleIds(stack) {
     return stack.filter((w) => w.type === 'article').map((w) => w.id);
-}
-
-function parseHash() {
-    return location.hash.slice(1).split(',').filter(Boolean).map(decodeURIComponent);
 }
 
 function hashOf(ids) {

@@ -1,6 +1,7 @@
-// mobile/sidebar.js —— 顶部抽屉（手机端文章栏）。
+// sidebar.js —— 顶部抽屉（手机端文章栏）。
 // 结构：抽屉页（列表 + 底部握把条，同一可见表面）+ 页下方 15vh 透明热点区。
 // 收起时抽屉页上移出屏、只探出握把条，热点区垂在屏内顶部承接下拉手势。
+// 清单来自 meta 全集即刻渲染；失败篇灰显，计数随正文后台流推进。
 
 import * as data from '../../core/data.js';
 import * as wm from '../../core/window-manager.js';
@@ -14,7 +15,7 @@ let expanded = false;
 
 function render() {
     const articles = data.getArticles();
-    listEl.innerHTML = '<h3>文章列表</h3>';
+    listEl.innerHTML = '<h3>文章列表<span class="cache-count"></span></h3>';
 
     if (!articles.length) {
         const empty = document.createElement('div');
@@ -26,7 +27,7 @@ function render() {
 
     for (const a of articles) {
         const item = document.createElement('div');
-        item.className = 'sidebar-item';
+        item.className = 'sidebar-item' + (a.state === 'failed' ? ' failed' : '');
         item.dataset.id = a.id;
         item.textContent = `${a.id} ${a.title}`;
         item.addEventListener('click', () => {
@@ -141,6 +142,12 @@ export function initSidebar() {
 
     render();
     wm.subscribe(updateActive);
+    // 正文逐篇就绪：刷新失败态与计数；全部就绪后计数淡出
+    data.onArticleSettled((done, total) => {
+        render();
+        const c = listEl.querySelector('.cache-count');
+        if (c) c.textContent = total > 1 && done < total ? `${done}/${total}` : '';
+    });
     initGesture();
     collapse();
 }

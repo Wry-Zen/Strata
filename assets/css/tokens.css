@@ -177,6 +177,11 @@ body {
     color: #d4d4d4;
 }
 
+/* 文章窗口内的临时提示（加载中 / 失败 / 不存在） */
+.article-hint {
+    color: #666;
+}
+
 /* 代码语法高亮 token 配色（配合 VS Code Dark+） */
 .article-content .hljs-keyword,
 .article-content .hljs-selector-tag,
@@ -440,6 +445,19 @@ body {
     color: rgba(255, 255, 255, 0.5);
     background: none;
     cursor: default;
+}
+
+/* 加载失败的篇目：灰显缺位，不无声消失 */
+.sidebar-item.failed {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+/* 侧栏标题旁的正文缓存计数：后台流期间显示 n/N，全部就绪后清空 */
+.cache-count {
+    margin-left: 8px;
+    font-size: 12px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.45);
 }
 
 /* ============ 标签视觉样式（跨平台通用） ============ */

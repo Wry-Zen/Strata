@@ -1,4 +1,5 @@
 // article-view.js —— 文章窗口（桌面）：DOM 生命周期、抽屉式转场。
+// 正文未就绪（后台流未到、抢点打开）时现场拉取，就绪或失败后回填。
 
 import * as wm from '../../core/window-manager.js';
 import * as data from '../../core/data.js';
@@ -6,6 +7,29 @@ import * as data from '../../core/data.js';
 let windowsRoot = null;
 const domMap = new Map(); // id -> { el }
 let prevArticleIds = [];
+
+// 正文回填：就绪即渲染并高亮（hljs 未就绪时挂起，到岗后补）；未就绪现场拉取
+function fillContent(content, meta) {
+    if (!meta) {
+        content.innerHTML = '<p class="article-hint">文章不存在</p>';
+        return;
+    }
+    if (meta.state === 'ready') {
+        content.innerHTML = meta.html;
+        data.highlightIn(content);
+        return;
+    }
+    content.innerHTML = '<p class="article-hint">加载中…</p>';
+    data.ensureLoaded(meta).then(() => {
+        // 窗口可能已关闭，此时写入的是游离节点，无害
+        if (meta.state === 'ready') {
+            content.innerHTML = meta.html;
+            data.highlightIn(content);
+        } else {
+            content.innerHTML = '<p class="article-hint">文章加载失败</p>';
+        }
+    });
+}
 
 function createWindow(id, z) {
     const meta = data.getMeta(id);
@@ -18,8 +42,7 @@ function createWindow(id, z) {
         </div>
     `;
 
-    const content = el.querySelector('.article-content');
-    content.innerHTML = meta ? meta.html : '<p style="color:#666">文章不存在</p>';
+    fillContent(el.querySelector('.article-content'), meta);
 
     windowsRoot.appendChild(el);
     domMap.set(id, { el });

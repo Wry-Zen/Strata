@@ -7,6 +7,11 @@
     <meta name="color-scheme" content="dark">
     <title></title>
 
+    <!-- 预连接外部源：各省一次 DNS+TLS 握手（module import 与 fetch 均为 CORS） -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+    <link rel="preconnect" href="https://api.github.com" crossorigin>
+
     <!-- 通用样式（跨平台）：令牌、背景、加载状态。
          防 FOUC 无需内联：本文件是 render-blocking 加载，平台组件 DOM 又由 JS
          在对应平台 CSS 注入后才创建，不存在未样式化闪现窗口 -->

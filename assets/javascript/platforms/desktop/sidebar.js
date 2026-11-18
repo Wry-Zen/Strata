@@ -1,9 +1,11 @@
-// sidebar.js —— 侧边栏（桌面）：渲染文章列表，点击打开文章，高亮当前置顶文章。
+// sidebar.js —— 侧边栏（桌面）：清单全集即刻渲染（标题来自 meta，不依赖正文），
+// 正文后台流期间显示 n/N 计数，加载失败的篇目灰显缺位。
 
 import * as data from '../../core/data.js';
 import * as wm from '../../core/window-manager.js';
 
 let listEl = null;
+let countEl = null;
 
 function render() {
     const articles = data.getArticles();
@@ -19,7 +21,7 @@ function render() {
 
     for (const a of articles) {
         const item = document.createElement('div');
-        item.className = 'sidebar-item';
+        item.className = 'sidebar-item' + (a.state === 'failed' ? ' failed' : '');
         item.dataset.id = a.id;
         item.textContent = `${a.id} ${a.title}`;
         item.addEventListener('click', () => wm.open(a.id));
@@ -43,13 +45,19 @@ export function initSidebar() {
     root.className = 'sidebar';
     root.innerHTML = `
         <div class="sidebar-content">
-            <h3>文章列表</h3>
+            <h3>文章列表<span class="cache-count"></span></h3>
             <div class="article-list"></div>
         </div>
         <div class="sidebar-collapsed-hint"><span>☰</span></div>
     `;
     document.body.appendChild(root);
     listEl = root.querySelector('.article-list');
+    countEl = root.querySelector('.cache-count');
     render();
     wm.subscribe(updateActive);
+    // 正文逐篇就绪：刷新失败态与计数；全部就绪后计数淡出
+    data.onArticleSettled((done, total) => {
+        render();
+        countEl.textContent = total > 1 && done < total ? `${done}/${total}` : '';
+    });
 }
