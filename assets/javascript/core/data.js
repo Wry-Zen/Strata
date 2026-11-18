@@ -67,7 +67,13 @@ export function getMeta(id) {
 }
 
 export function parseHash() {
-    return location.hash.slice(1).split(',').filter(Boolean).map(decodeURIComponent);
+    return location.hash.slice(1).split(',').filter(Boolean).map((s) => {
+        try {
+            return decodeURIComponent(s);
+        } catch {
+            return s; // 畸形转义（如 #%）按原样处理，不让 boot 中断
+        }
+    });
 }
 
 // 第一个 # 标题行作为文章标题（不要求在第一行）；仅旧版清单（无 meta 标题）时用于正文补全
@@ -168,8 +174,12 @@ let cacheTried = false;
 async function openCache() {
     if (!cacheTried) {
         cacheTried = true;
-        // 非安全上下文（纯 HTTP）无 Cache Storage，退化为直拉
-        articleCache = 'caches' in window ? await caches.open(CACHE_NAME) : null;
+        try {
+            // 非安全上下文（纯 HTTP）无 Cache Storage；隐私模式等场景 open 可能 reject——均退化为直拉
+            articleCache = 'caches' in window ? await caches.open(CACHE_NAME) : null;
+        } catch {
+            articleCache = null;
+        }
     }
     return articleCache;
 }
@@ -193,7 +203,7 @@ async function fetchMd(entry) {
     // 竞态说明：若 meta 拉取与正文拉取之间恰有新 push，此处内容会比 meta 声称的 sha 更新，
     // 仍按 meta 的 sha 落键。后果仅是下次 meta 追上后未命中、冗余重拉一次；
     // 旧数据被当新数据服务需要"内容精确回滚到旧 sha"叠加同一竞态，此处不设防
-    if (cache) cache.put(req, new Response(md));
+    if (cache) cache.put(req, new Response(md)).catch(() => {}); // 落缓存失败不影响阅读
     return md;
 }
 

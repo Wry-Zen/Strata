@@ -288,7 +288,7 @@ body {
     border: none;
     cursor: pointer;
     position: relative;
-    transition: all 0.4s ease;
+    transition: width 0.4s ease;
     outline: none;
     display: flex;
     align-items: center;
@@ -299,18 +299,22 @@ body {
     width: 50vw;
 }
 
+/* 三角形墨迹质心在盒中心偏左偏上：左缘钉在 50% 会整体偏移 18px，
+   尖端朝下的实心三角质心还高于盒中心 1/3 高度——此处按墨迹中心锚定 */
 .triangle {
     width: 0;
     height: 0;
     border-left: 12px solid transparent;
     border-right: 12px solid transparent;
     border-top: 20px solid rgba(255, 255, 255, 0.8);
-    transition: transform 0.4s ease;
+    transition: transform 0.4s ease, left 0.4s ease;
     position: absolute;
-    left: 0;
+    left: calc(50% - 12px);
+    top: calc(50% - 6.67px);
 }
 
 .search-button.active .triangle {
+    left: 0;
     transform: translateX(20px) rotate(180deg);
 }
 

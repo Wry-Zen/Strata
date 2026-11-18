@@ -5,10 +5,11 @@
 //      → 封边(随机检查点) → [硬等清单+恢复：meta 与 hash 引用篇] → 封边完成(随机)
 //      → 升维 → 旋转
 //
-// 节拍原则——等待才表演：检查点已就绪的段快进（150–250ms），仍在等待的段
+// 节拍原则——等待才表演：检查点已就绪的段快进（280–380ms），仍在等待的段
 // 保持完整节奏（650–850ms）。快网用户看到的是同一支编舞的高速版；慢网用户
 // 在 hold 段得到呼吸脉动与 n/N 进度，静止与卡死可分辨。
-// 揭示（onReady）在封边合拢（link2）开始时触发，升维与界面淡入同帧完成。
+// 揭示（onReady）在封边合拢（link2）开始后留 0.32s 再触发：收尾动画与
+// 组件入场不挤在同一帧。
 // 失败路径保持红色静态；重试从失败姿态续位，已就绪的检查点直接冲刺。
 //
 // 几何衔接：正三角形 + 三条到中心的线，恰好是正四面体在正面视角下的投影。
@@ -54,6 +55,7 @@ let manifestFlag = false;  // 清单：meta 全集就绪
 let restoreFlag = false;   // 恢复：URL hash 引用的文章就绪
 let progress = { done: 0, total: 0 }; // 恢复篇进度（hold2 计数显示）
 let revealed = false;      // onReady 只触发一次
+let revealTimer = null;    // 揭示延迟定时器（重试时需清理）
 
 let spokeT = 0; // 辐条（发散）进度 0..1
 let linkT = 0;  // 三角形边（封边）进度 0..1
@@ -80,7 +82,9 @@ const now = () => performance.now();
 const rand = (min, max) => min + Math.random() * (max - min);
 // 节拍二值：等待中的段完整表演，已就绪的段快进
 const slowDur = () => rand(650, 850);
-const fastDur = () => rand(150, 250);
+const fastDur = () => rand(280, 380);
+// 加载完成到组件揭示之间的留白
+const REVEAL_DELAY = 320;
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 const noise = (x) => Math.sin(x) * 0.2 + 0.2;
 
@@ -160,7 +164,7 @@ function draw2D() {
     // 中心白点：point 阶段淡入，发散生长时缩小消失
     const dotR = 4 * Math.max(0, 1 - spokeT * 5);
     if (dotR > 0.01) {
-        const alpha = state === 'point' ? Math.min(1, (now() - stateStart) / stateDur / 1000) : 1;
+        const alpha = state === 'point' ? Math.min(1, (now() - stateStart) / stateDur) : 1;
         ctx.fillStyle = lineColor(0.9 * alpha * breathe());
         ctx.beginPath();
         ctx.arc(c.x, c.y, dotR, 0, Math.PI * 2);
@@ -298,16 +302,18 @@ function tick() {
             break;
 
         case 'link2': {
-            // 揭示与收尾重叠：封边合拢即触发界面入场，升维在其后同帧进行
+            // 揭示与收尾重叠：封边合拢后留一拍再触发界面入场
             if (!revealed) {
                 revealed = true;
-                if (onReady) onReady();
+                revealTimer = setTimeout(() => {
+                    if (onReady) onReady();
+                }, REVEAL_DELAY);
             }
             const p = Math.min(1, t / (stateDur / 1000));
             linkT = linkTarget + (1 - linkTarget) * easeOut(p);
             if (p >= 1) {
                 linkT = 1;
-                enter('dimension', rand(400, 650));
+                enter('dimension', rand(520, 720));
             }
             break;
         }
@@ -355,6 +361,10 @@ function showFailScreen(msg) {
 
 function reset() {
     if (rafId) cancelAnimationFrame(rafId);
+    if (revealTimer) {
+        clearTimeout(revealTimer);
+        revealTimer = null;
+    }
     if (failEl) {
         failEl.remove();
         failEl = null;
@@ -386,7 +396,7 @@ export function createIntro({ onReady: ready, onRetry: retry } = {}) {
 
     return {
         begin() {
-            enter('point', rand(200, 300));
+            enter('point', rand(380, 480));
             growTarget = rand(0.3, 0.6);
             linkTarget = rand(0.3, 0.6);
             rafId = requestAnimationFrame(tick);

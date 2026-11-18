@@ -142,9 +142,9 @@ export function initSidebar() {
 
     render();
     wm.subscribe(updateActive);
-    // 正文逐篇就绪：刷新失败态与计数；全部就绪后计数淡出
+    // 正文逐篇就绪：词条外观只在出现失败态时变化，其余仅更新计数
     data.onArticleSettled((done, total) => {
-        render();
+        if (data.getArticles().some((a) => a.state === 'failed')) render();
         const c = listEl.querySelector('.cache-count');
         if (c) c.textContent = total > 1 && done < total ? `${done}/${total}` : '';
     });

@@ -15,6 +15,7 @@ const TIMEOUT = 10000;
 
 // 平台模块在 boot 中动态加载后赋值，revealUI 通过它触发淡入
 let platform = null;
+let branded = false;
 
 function revealUI() {
     platform?.reveal();
@@ -52,8 +53,11 @@ function loadHljsInBackground() {
 }
 
 async function boot() {
-    // 尽早设置图标与标题，避免加载期间短暂显示默认「Strata」
-    initBranding();
+    // 尽早设置图标与标题，避免加载期间短暂显示默认「Strata」；重试不重复注册
+    if (!branded) {
+        branded = true;
+        initBranding();
+    }
 
     const intro = createIntro({ onReady: revealUI, onRetry: boot });
     intro.begin();

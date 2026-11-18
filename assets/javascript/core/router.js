@@ -5,7 +5,6 @@
 
 import * as data from './data.js';
 import * as wm from './window-manager.js';
-import { parseHash } from './data.js';
 
 let applying = false; // 应用外部 URL 期间抑制写回，避免历史条目堆积
 let lastIds = [];
@@ -49,12 +48,12 @@ function syncUrl(stack) {
 }
 
 export function initRouter() {
-    pending = parseHash();
+    pending = data.parseHash();
     wm.subscribe(syncUrl);
     // 后退/前进/手动改 hash：以 URL 为准，栈不同则重建
     for (const ev of ['hashchange', 'popstate']) {
         addEventListener(ev, () => {
-            const ids = parseHash();
+            const ids = data.parseHash();
             if (!same(ids, articleIds(wm.getStack()))) apply(ids);
         });
     }
